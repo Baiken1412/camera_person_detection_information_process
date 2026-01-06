@@ -1992,11 +1992,18 @@
             }).join('');
 
             // 追加或替换内容
+            // 性能优化：使用 insertAdjacentHTML 替代 innerHTML +=
+            // insertAdjacentHTML 不会重新解析现有DOM，避免：
+            // 1. 事件监听器丢失
+            // 2. 用户交互状态(如选中、focus)丢失
+            // 3. 整个列表重新渲染导致的闪烁
             if (append) {
-                list.innerHTML += htmlContent;
+                // 追加模式：在列表末尾插入新内容
+                list.insertAdjacentHTML('beforeend', htmlContent);
                 // 更新已渲染数量
                 renderedCount = compositeEvents.length;
             } else {
+                // 全量渲染模式：直接覆盖(首次加载或筛选重置)
                 list.innerHTML = htmlContent;
                 // 全量渲染后，更新已渲染数量
                 renderedCount = compositeEvents.length;
