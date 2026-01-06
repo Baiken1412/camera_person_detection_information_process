@@ -608,7 +608,7 @@
                 <input type="date" id="endDateFilter">
             </div>
             <div>
-                <label for="areaFilter">📍 区域筛选：</label>
+                <label for="areaFilter">📍 摄像头筛选：</label>
                 <select id="areaFilter" class="form-control noselect2">
                     <option value="">全部区域</option>
                 </select>
@@ -748,9 +748,10 @@
                     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
                     const windowHeight = window.innerHeight;
                     const documentHeight = document.documentElement.scrollHeight;
-                    
+
                     // 当距离底部小于100px时，加载更多
-                    if (documentHeight - scrollTop - windowHeight < 100) {
+                    // 修复：增加 isLoading 检查，避免在加载中重复触发
+                    if (documentHeight - scrollTop - windowHeight < 100 && !isLoading && hasMore) {
                         loadMoreEvents();
                     }
                 }, 100);
@@ -1125,11 +1126,13 @@
         // 加载更多事件（滚动加载）
         function loadMoreEvents() {
             if (!hasMore || isLoading) {
+                console.log('[滚动加载] 跳过加载 - hasMore:', hasMore, 'isLoading:', isLoading);
                 return;
             }
 
             // 页码+1，加载下一页
             currentPage++;
+            console.log('[滚动加载] 开始加载第', currentPage, '页');
             analyzeCompositeEvents(true); // 追加模式
         }
 
@@ -1593,9 +1596,11 @@
         function analyzeCompositeEvents(append = false) {
             // 如果正在加载或没有更多数据，则返回
             if (isLoading || (!append && !hasMore && currentPage > 1)) {
+                console.log('[加载事件] 跳过 - append:', append, 'isLoading:', isLoading, 'hasMore:', hasMore, 'currentPage:', currentPage);
                 return;
             }
 
+            console.log('[加载事件] 开始 - append:', append, 'currentPage:', currentPage, '已有事件数:', compositeEvents.length);
             isLoading = true;
 
             // 如果不是追加模式，重置分页
@@ -1688,8 +1693,13 @@
                         const rows = data.rows || [];
                         totalCount = data.total || 0;
 
-                        // 检查是否还有更多数据
-                        hasMore = rows.length >= pageSize;
+                        // 检查是否还有更多数据（修复：使用总数判断，避免重复加载）
+                        // 已加载数量 = 当前已有数量 + 本次新增数量
+                        // 如果已加载数量 < 总数，说明还有更多
+                        const currentLoadedCount = append ? (compositeEvents.length + rows.length) : rows.length;
+                        hasMore = currentLoadedCount < totalCount && rows.length > 0;
+
+                        console.log('[分页调试] 当前页:', currentPage, '本次返回:', rows.length, '总数:', totalCount, '已加载:', currentLoadedCount, '还有更多:', hasMore);
 
                         // 转换后端数据格式为前端需要的格式（分页接口已经按时间排序）
                         // 计算全局索引的起始值（追加模式下从已有事件数量开始）
@@ -1822,7 +1832,22 @@
 
                         // 追加或替换数据（使用筛选后的数据）
                         if (append) {
-                            compositeEvents = [...compositeEvents, ...filteredNewEvents];
+                            // 修复：添加去重逻辑，避免重复显示
+                            // 使用 Set 记录已存在的事件ID
+                            const existingIds = new Set(compositeEvents.map(e => e.id));
+
+                            // 只添加不存在的新事件
+                            const uniqueNewEvents = filteredNewEvents.filter(e => {
+                                if (existingIds.has(e.id)) {
+                                    console.log('[去重] 跳过重复事件 ID:', e.id, '路径:', e.path.join(' → '));
+                                    return false;
+                                }
+                                return true;
+                            });
+
+                            console.log('[追加数据] 原有:', compositeEvents.length, '新增:', filteredNewEvents.length, '去重后:', uniqueNewEvents.length);
+
+                            compositeEvents = [...compositeEvents, ...uniqueNewEvents];
                         } else {
                             compositeEvents = filteredNewEvents;
                         }
